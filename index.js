@@ -22,35 +22,41 @@ evs.registerEventListeners({
     return new Promise((resolve, reject) => {
       if(email.to.match(/@test\.com>?$/)) {
         console.log("TEST EMAIL TO", email.to)
-        return r.table("email_events").get(id).update({
-          sent: true
-        }).run(evs.db)
+        return evs.db.run(
+          r.table("email_events").get(id).update({
+            sent: true
+           })
+        )
       }
       smtp.sendMail(email, (error, info) => {
         if (error) {
-          return r.table("email_events").get(id).update({
-            smtpError: error
-          }).run(evs.db).then(
+          return evs.db.run(
+            r.table("email_events").get(id).update({
+              smtpError: error
+            })
+          ).then(
             result => reject("sendFailed")
           )
         }
-        return r.table("email_events").get(id).update({
-          sent: true,
-          sentTime: new Date(),
-          smtp: {
-            messageId: info.messageId,
-            response: info.response
-          }
-        }).run(evs.db)
+        return evs.db.run(
+          r.table("email_events").get(id).update({
+            sent: true,
+            sentTime: new Date(),
+            smtp: {
+              messageId: info.messageId,
+              response: info.response
+            }
+          })
+        )
       })
     })
   }
 
 })
 
-evs.dbPromise.then(db => require("../config/metricsWriter.js")(db,'email', () => ({
+require("../config/metricsWriter.js")('email', () => ({
 
-})))
+}))
 
 process.on('unhandledRejection', (reason, p) => {
   console.log('Unhandled Rejection at: Promise', p, 'reason:', reason)
