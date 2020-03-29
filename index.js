@@ -1,8 +1,13 @@
-const r = require('rethinkdb')
 const nodemailer = require('nodemailer')
-const evs = require('rethink-event-sourcing')({
-  serviceName: 'email'
+const App = require("@live-change/framework")
+const validators = require("../validation")
+const app = new App()
+
+const definition = app.createServiceDefinition({
+  name: "email",
+  validators
 })
+
 
 const smtp = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
@@ -14,49 +19,76 @@ const smtp = nodemailer.createTransport({
   }
 })
 
-evs.registerEventListeners({
-
-  sent({ id, email, sent }) {
-    if(sent) return; // anti resent solution
+definition.event({
+  name: "send",
+  properties: {
+    id: {
+      type: String
+    },
+    email: {
+      type: Object
+    },
+    flags: {
+      type: Object
+    }
+  },
+  async execute({ id, email, flags }) {
+    if(flags.sent) return // anti resent solution
 
     return new Promise((resolve, reject) => {
       if(email.to.match(/@test\.com>?$/)) {
         console.log("TEST EMAIL TO", email.to)
-        return evs.db.run(
-          r.table("email_events").get(id).update({
+        service.dao.request([
+          'database', 'flagLog',
+          service.databaseName, service.app.splitEvents ? "events" : "email_events",
+          {
             sent: true
-           })
-        )
+          }
+        ])
       }
       smtp.sendMail(email, (error, info) => {
         if (error) {
-          return evs.db.run(
-            r.table("email_events").get(id).update({
+          service.dao.request([
+            'database', 'flagLog',
+            service.databaseName, service.app.splitEvents ? "events" : "email_events",
+            {
+              sent: true,
               smtpError: error
-            })
-          ).then(
-            result => reject("sendFailed")
-          )
+            }
+          ])
         }
-        return evs.db.run(
-          r.table("email_events").get(id).update({
+        service.dao.request([
+          'database', 'flagLog',
+          service.databaseName, service.app.splitEvents ? "events" : "email_events",
+          {
             sent: true,
             sentTime: new Date(),
             smtp: {
               messageId: info.messageId,
               response: info.response
             }
-          })
-        )
+          }
+        ])
       })
     })
   }
-
 })
 
-require("../config/metricsWriter.js")('email', () => ({
 
-}))
+
+module.exports = definition
+
+async function start() {
+  app.processServiceDefinition(definition, [ ...app.defaultProcessors ])
+  await app.updateService(definition)//, { force: true })
+  const service = await app.startService(definition, { runCommands: true, handleEvents: true })
+
+  /*require("../config/metricsWriter.js")(definition.name, () => ({
+
+  }))*/
+}
+
+if (require.main === module) start().catch( error => { console.error(error); process.exit(1) })
 
 process.on('unhandledRejection', (reason, p) => {
   console.log('Unhandled Rejection at: Promise', p, 'reason:', reason)
