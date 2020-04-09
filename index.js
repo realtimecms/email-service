@@ -8,7 +8,6 @@ const definition = app.createServiceDefinition({
   validators
 })
 
-
 const smtp = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: +process.env.SMTP_PORT,
@@ -16,6 +15,21 @@ const smtp = nodemailer.createTransport({
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASSWORD
+  }
+})
+
+const SentEmail = definition.model({
+  name: "SentEmail",
+  properties: {
+    email: {
+      type: Object
+    },
+    error: {
+      type: Object
+    },
+    smtp: {
+      type: Object
+    }
   }
 })
 
@@ -27,48 +41,28 @@ definition.event({
     },
     email: {
       type: Object
-    },
-    flags: {
-      type: Object
     }
   },
-  async execute({ id, email, flags }) {
-    if(flags.sent) return // anti resent solution
+  async execute({ id, email }) {
+    const sentEmail = await SentEmail.get(id)
+    if(sentEmail) return // anti resent solution
 
     return new Promise((resolve, reject) => {
       if(email.to.match(/@test\.com>?$/)) {
         console.log("TEST EMAIL TO", email.to)
-        service.dao.request([
-          'database', 'flagLog',
-          service.databaseName, service.app.splitEvents ? "events" : "email_events",
-          {
-            sent: true
-          }
-        ])
+        SentEmail.create({ id, email })
       }
       smtp.sendMail(email, (error, info) => {
         if (error) {
-          service.dao.request([
-            'database', 'flagLog',
-            service.databaseName, service.app.splitEvents ? "events" : "email_events",
-            {
-              sent: true,
-              smtpError: error
-            }
-          ])
+          return SentEmail.create({ id, email, error: error })
         }
-        service.dao.request([
-          'database', 'flagLog',
-          service.databaseName, service.app.splitEvents ? "events" : "email_events",
-          {
-            sent: true,
-            sentTime: new Date(),
-            smtp: {
-              messageId: info.messageId,
-              response: info.response
-            }
+        SentEmail.create({
+          id, email,
+          smtp: {
+            messageId: info.messageId,
+            response: info.response
           }
-        ])
+        })
       })
     })
   }
