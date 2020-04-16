@@ -87,4 +87,3 @@ if (require.main === module) start().catch( error => { console.error(error); pro
 process.on('unhandledRejection', (reason, p) => {
   console.log('Unhandled Rejection at: Promise', p, 'reason:', reason)
 })
-
