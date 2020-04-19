@@ -11,10 +11,14 @@ const definition = app.createServiceDefinition({
 const smtp = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: +process.env.SMTP_PORT,
-  secure: false, // secure:true for port 465, secure:false for port 587
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASSWORD
+  },
+  secure: !process.env.SMTP_INSECURE, // secure:true for port 465, secure:false for port 587
+  tls: {
+    // do not fail on invalid certs
+    rejectUnauthorized: !process.env.SMTP_IGNORE_TLS
   }
 })
 
@@ -34,7 +38,7 @@ const SentEmail = definition.model({
 })
 
 definition.event({
-  name: "send",
+  name: "sent",
   properties: {
     id: {
       type: String
@@ -43,28 +47,32 @@ definition.event({
       type: Object
     }
   },
-  async execute({ id, email }) {
+  async execute(event) {
+    const { email, id } = event
     const sentEmail = await SentEmail.get(id)
     if(sentEmail) return // anti resent solution
 
-    return new Promise((resolve, reject) => {
-      if(email.to.match(/@test\.com>?$/)) {
-        console.log("TEST EMAIL TO", email.to)
-        SentEmail.create({ id, email })
-      }
-      smtp.sendMail(email, (error, info) => {
-        if (error) {
-          return SentEmail.create({ id, email, error: error })
+    if(email.to.match(/@test\.com>?$/)) {
+      console.log("TEST EMAIL TO", email.to)
+      await SentEmail.create({ id, email })
+      return
+    }
+
+    try {
+      console.log("SEND EMAIL", email)
+      const info = await smtp.sendMail(email)
+      console.log("EMAIL SENT!", info)
+      await SentEmail.create({
+        id, email,
+        smtp: {
+          messageId: info.messageId,
+          response: info.response
         }
-        SentEmail.create({
-          id, email,
-          smtp: {
-            messageId: info.messageId,
-            response: info.response
-          }
-        })
       })
-    })
+    } catch(error) {
+      console.error("EMAIL ERROR", error)
+      await SentEmail.create({ id, email, error: error })
+    }
   }
 })
 
