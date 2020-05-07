@@ -37,24 +37,32 @@ const SentEmail = definition.model({
   }
 })
 
-definition.event({
-  name: "sent",
+definition.trigger({
+  name: "sendEmail",
   properties: {
-    id: {
+    emailId: {
       type: String
     },
     email: {
-      type: Object
+      type: Object,
+      validation: ['nonEmpty']
     }
   },
-  async execute(event) {
-    const { email, id } = event
-    const sentEmail = await SentEmail.get(id)
-    if(sentEmail) return // anti resent solution
+  async execute(props, context, emit) {
+    const emailId = props.emailId || app.generateUid()
+    const email = props.email
+    if(!email) throw new Error('email must be defined')
 
     if(email.to.match(/@test\.com>?$/)) {
       console.log("TEST EMAIL TO", email.to)
-      await SentEmail.create({ id, email })
+      emit({
+        type: 'sent',
+        emailId,
+        email: email,
+        smtp: {
+          test: true
+        }
+      })
       return
     }
 
@@ -62,8 +70,10 @@ definition.event({
       console.log("SEND EMAIL", email)
       const info = await smtp.sendMail(email)
       console.log("EMAIL SENT!", info)
-      await SentEmail.create({
-        id, email,
+      emit({
+        type: 'sent',
+        emailId,
+        email: email,
         smtp: {
           messageId: info.messageId,
           response: info.response
@@ -71,11 +81,52 @@ definition.event({
       })
     } catch(error) {
       console.error("EMAIL ERROR", error)
-      await SentEmail.create({ id, email, error: error })
+      emit({
+        type: 'error',
+        emailId,
+        email: email,
+        error: error
+      })
     }
   }
 })
 
+definition.event({
+  name: "sent",
+  properties: {
+    emailId: {
+      type: String
+    },
+    email: {
+      type: Object
+    },
+    smtp: {
+      type: Object
+    }
+  },
+  async execute(event) {
+    await SentEmail.create({ id: event.emailId, email: event.email, smtp: event.smtp })
+  }
+})
+
+
+definition.event({
+  name: "error",
+  properties: {
+    emailId: {
+      type: String
+    },
+    email: {
+      type: Object
+    },
+    error: {
+      type: Object
+    }
+  },
+  async execute(event) {
+    await SentEmail.create({ id: event.emailId, email: event.email, error: event.error })
+  }
+})
 
 
 module.exports = definition
