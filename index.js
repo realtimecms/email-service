@@ -65,30 +65,33 @@ definition.trigger({
       })
       return
     }
-
-    try {
-      console.log("SEND EMAIL", email)
-      const info = await smtp.sendMail(email)
-      console.log("EMAIL SENT!", info)
-      emit({
-        type: 'sent',
-        emailId,
-        email: email,
-        smtp: {
-          messageId: info.messageId,
-          response: info.response
-        }
-      })
-    } catch(error) {
-      console.error("EMAIL ERROR", error)
-      emit({
-        type: 'error',
-        emailId,
-        email: email,
-        error: error
-      })
+    const doSendEmail = async () => { // async it can be very slow :/
+      try {
+        console.log("SEND EMAIL", email);
+        const info = await smtp.sendMail(email)
+        emit({
+          type: 'sent',
+          emailId,
+          email: email,
+          smtp: {
+            messageId: info.messageId,
+            response: info.response
+          }
+        })
+        console.log("EMAIL SENT!", info)
+      } catch(error) {
+        console.error("EMAIL ERROR", error)
+        emit({
+          type: 'error',
+          emailId,
+          email: email,
+          error: error
+        })
+      }
     }
+    doSendEmail()
   }
+
 })
 
 definition.event({
