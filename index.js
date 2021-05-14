@@ -1,7 +1,6 @@
 const nodemailer = require('nodemailer')
-const App = require("@live-change/framework")
 const validators = require("../validation")
-const app = new App()
+const app = require("@live-change/framework").app()
 
 const definition = app.createServiceDefinition({
   name: "email",
